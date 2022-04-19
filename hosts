@@ -1,0 +1,5 @@
+[fortimanagers]
+fmg01 ansible_host=10.0.10.234 ansible_connection=httpapi ansible_user="webadmin"
+
+[fortimanagers:vars]
+ansible_network_os=fortinet.fortimanager.fortimanager

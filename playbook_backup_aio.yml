@@ -1,0 +1,93 @@
+#Backs up FortiGate using FMG: sys/prox/json
+#Converts vars into template via Jinja2
+#Uploads template to FortiManager via cli script
+###################################################
+---
+- hosts: fortimanagers
+  collections:
+  - fortinet.fortimanager
+  connection: httpapi
+  vars:
+     ansible_httpapi_use_ssl: True
+     ansible_httpapi_validate_certs: False
+     ansible_httpapi_port: 443
+     adom: '6_0'
+     fortigate: 'FGVM01TM21002021'
+     script_name: '000_ansible01_{{ fortigate }}_{{ ansible_date_time.iso8601_basic_short }}'
+     cmds_name: '_generated_cmds_{{ ansible_date_time.iso8601_basic_short }}.txt'
+     ansible_python_interpreter: /usr/bin/python3
+  tasks:
+    - name: Send and receive JSON request to/from managed devices.
+      fmgr_sys_proxy_json:
+         enable_log: True
+         bypass_validation: False
+         workspace_locking_adom: '{{adom}}'
+         workspace_locking_timeout: 300
+         rc_succeeded: [0, -2, -3, ...]
+         rc_failed: [-2, -3, ...]
+         sys_proxy_json:
+            action: 'get'
+            payload: {"scope": "global"}
+            resource: '/api/v2/monitor/system/config/backup'
+            target: ["adom/{{adom}}/device/{{fortigate}}"]
+      register: config
+
+    - name: Create local directory backups
+      ansible.builtin.file:
+        path: "{{ ansible_play_name }}/files/backups"
+        state: directory
+      register: local_dir
+      delegate_to: localhost
+
+    - name: Create local directory scripts
+      ansible.builtin.file:
+        path: "{{ ansible_play_name }}/files/scripts"
+        state: directory
+      register: local_dir
+      delegate_to: localhost
+
+    - name: save output to files/backups/{{ inventory_hostname }}.conf
+      copy:
+        content: "{{ config.meta.response_data[0].response }}"
+        dest: "{{ ansible_play_name }}/files/backups/{{ fortigate }}.conf"
+
+    - name: Load vars used for jinja templates
+      include_vars:
+        file: vars/main.yml
+        name: yvars
+
+    - name: Template a file to script
+      ansible.builtin.template:
+        src: templates/interop.j2
+        dest: "{{ ansible_play_name }}/files/scripts/{{cmds_name}}"
+
+    - name: Lock an entire ADOM.
+      fmgr_dvmdb_workspace_lock:
+        bypass_validation: False
+        workspace_locking_adom: "{{ adom }}"
+        workspace_locking_timeout: 300
+        rc_succeeded: [0, -2, -3, ...]
+        rc_failed: [-2, -3, ...]
+        adom: "{{ adom }}"
+
+    - name: Create a Script to later execute from FMG
+      fmgr_dvmdb_script:
+        enable_log: True
+        adom: '{{ adom }}'
+        state: 'present'
+        dvmdb_script:
+            name: '{{ script_name }}'
+            desc: 'A script created via Ansible'
+            content: "{{ lookup('file', '{{ ansible_play_name }}/files/scripts/{{cmds_name}}') }}"
+            type: 'cli'
+            target: 'remote_device'
+
+    - name: Unlock an entire ADOM.
+      fmgr_dvmdb_workspace_unlock:
+        enable_log: True
+        bypass_validation: False
+        workspace_locking_adom: "{{ adom }}"
+        workspace_locking_timeout: 300
+        rc_succeeded: [0, -2, -3, ...]
+        rc_failed: [-2, -3, ...]
+        adom: "{{ adom }}"

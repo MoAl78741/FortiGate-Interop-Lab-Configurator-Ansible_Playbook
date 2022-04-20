@@ -46,7 +46,7 @@
       register: local_dir
       delegate_to: localhost
 
-    - name: save output to files/backups/{{ inventory_hostname }}.conf
+    - name: Save output to files/backups/{{ inventory_hostname }}.conf
       copy:
         content: "{{ config.meta.response_data[0].response }}"
         dest: "{{ ansible_play_name }}/files/backups/{{ fortigate }}.conf"
